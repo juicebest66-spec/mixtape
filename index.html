@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0d0a09">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="一张藏在纸里的 NFC 歌单。把手机贴上去，从那一秒开始听。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2314100e'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23c0664f'/%3E%3Ccircle cx='32' cy='32' r='2' fill='%2314100e'/%3E%3C/svg%3E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>给你的时间轴</title>
+<style>
+:root{
+  --paper:#f4ede2;
+  --muted:rgba(244,237,226,.52);
+  --line:rgba(244,237,226,.13);
+  --accent:#c0664f;
+  --label:#c0664f;
+  --glow:rgba(192,102,79,.5);
+  --glow2:rgba(140,90,70,.32);
+  --glow3:rgba(80,60,50,.35);
+  --p:0;
+  --disc:clamp(170px,23vh,208px);
+  --serif:"Noto Serif SC","Songti SC","STSong","Source Han Serif SC",Georgia,serif;
+  --sans:"Noto Sans SC","PingFang SC","HarmonyOS Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"SF Mono","JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:#0d0a09}
+body{
+  margin:0;min-height:100dvh;background:#0d0a09;color:var(--paper);
+  font-family:var(--sans);overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+button{font:inherit;color:inherit}
+
+/* ---------- atmosphere ---------- */
+.ambient{position:fixed;inset:0;z-index:0;overflow:hidden;
+  background:radial-gradient(130% 80% at 50% -10%,#221914 0%,#120e0c 45%,#0b0908 100%)}
+.blob{position:absolute;border-radius:50%;filter:blur(64px);transition:background 1.2s ease,opacity 1.2s ease;will-change:transform}
+.b1{width:96vw;height:96vw;left:-32vw;top:-22vw;background:var(--glow);opacity:.78;animation:drift1 18s ease-in-out infinite alternate}
+.b2{width:82vw;height:82vw;right:-34vw;top:22vh;background:var(--glow2);opacity:.5;animation:drift2 22s ease-in-out infinite alternate}
+.b3{width:110vw;height:110vw;left:-10vw;bottom:-56vh;background:var(--glow3);opacity:.55;animation:drift1 26s ease-in-out infinite alternate-reverse}
+@keyframes drift1{from{transform:translate3d(-2%,0,0) scale(1)}to{transform:translate3d(4%,3%,0) scale(1.08)}}
+@keyframes drift2{from{transform:translate3d(0,2%,0) scale(1.05)}to{transform:translate3d(-4%,-3%,0) scale(.98)}}
+.grain{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E")}
+
+/* ---------- shell ---------- */
+.app{position:relative;z-index:2;display:flex;flex-direction:column;width:100%;max-width:440px;
+  margin:0 auto;min-height:100vh;min-height:100dvh;padding:calc(env(safe-area-inset-top) + 14px) 22px calc(env(safe-area-inset-bottom) + 12px)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font:500 9px/1 var(--mono);letter-spacing:.19em;color:var(--muted);text-transform:uppercase}
+.brand{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.brand b{font-weight:600;color:rgba(244,237,226,.86);letter-spacing:.22em}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);flex:0 0 auto}
+.top-right{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.nfc-mini{display:inline-flex;align-items:center;gap:5px;color:rgba(244,237,226,.38)}
+.nfc-mini svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
+
+/* ---------- stage ---------- */
+.stage{flex:1;display:flex;flex-direction:column;min-height:0}
+.disc-stage{position:relative;display:grid;place-items:center;height:calc(var(--disc) + 30px);margin:8px 0 2px}
+.halo{position:absolute;width:calc(var(--disc) * 1.6);height:calc(var(--disc) * 1.6);border-radius:50%;
+  background:radial-gradient(circle,var(--glow) 0%,transparent 62%);filter:blur(26px);opacity:.75;transition:background 1.2s}
+.disc{position:relative;width:var(--disc);height:var(--disc);border-radius:50%;
+  background:
+    repeating-radial-gradient(circle at 50% 50%,rgba(255,255,255,.03) 0 1px,rgba(0,0,0,0) 1px 3.5px),
+    radial-gradient(circle at 32% 24%,#332a24 0%,#191411 42%,#0c0a09 78%);
+  box-shadow:0 34px 60px -18px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.06),inset 0 0 40px rgba(0,0,0,.6);
+  animation:spin 8s linear infinite;animation-play-state:paused;transform:rotate(0deg);
+  will-change:transform;backface-visibility:hidden}
+.is-playing .disc{animation-play-state:running}
+.shot .disc{animation-play-state:paused}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.disc-sheen{position:absolute;left:50%;top:50%;width:var(--disc);height:var(--disc);margin:calc(var(--disc) / -2);
+  border-radius:50%;z-index:2;pointer-events:none;
+  background:conic-gradient(from 205deg,rgba(255,255,255,.07),transparent 16%,transparent 66%,rgba(255,255,255,.035),transparent 86%);
+  mix-blend-mode:screen}
+.disc-label{position:absolute;inset:20.5%;border-radius:50%;overflow:hidden;
+  background-color:var(--label);background-image:var(--cover,none);background-size:cover;background-position:center;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.35),inset 0 0 30px rgba(0,0,0,.2)}
+.disc-label::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle at 32% 26%,rgba(255,255,255,.16),transparent 46%);mix-blend-mode:screen;pointer-events:none}
+.spindle{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;
+  background:#0b0908;box-shadow:0 0 0 1px rgba(255,255,255,.16),inset 0 1px 2px #000;z-index:2}
+.tonearm{position:absolute;left:50%;top:-12px;width:min(64%,250px);transform:translateX(-50%);z-index:3;
+  pointer-events:none;filter:drop-shadow(0 10px 14px rgba(0,0,0,.45))}
+.play .i-play{transform:translateX(1px)}
+.motto{margin:auto 0 0;padding-top:18px;text-align:center;font-family:var(--serif);font-size:9.5px;line-height:1.6;letter-spacing:.02em;color:rgba(244,237,226,.3)}
+
+.meta{text-align:center;margin-top:6px}
+.kicker{margin:0 0 9px;font:500 9px/1.4 var(--mono);letter-spacing:.18em;color:var(--muted);text-transform:uppercase}
+.kicker em{font-style:normal;color:rgba(244,237,226,.8)}
+h1{margin:0;font-family:var(--serif);font-weight:600;font-size:clamp(27px,7.6vw,33px);line-height:1.18;letter-spacing:.015em}
+.artist{margin:7px 0 0;font-size:11.5px;letter-spacing:.09em;color:var(--muted)}
+
+.lyric{flex:0 0 auto;margin:13px 0 15px;min-height:48px;display:flex;align-items:center;justify-content:center;text-align:center;
+  font-family:var(--serif);font-size:15.5px;line-height:1.62;color:rgba(244,237,226,.76);padding:0 4px}
+.lyric span{display:block}
+
+.seek-wrap{padding:0 2px}
+.seek{position:relative;height:24px;display:flex;align-items:center;cursor:pointer;touch-action:none;outline:none}
+.seek .rail{position:absolute;left:0;right:0;height:2px;border-radius:2px;background:rgba(244,237,226,.15)}
+.seek .fill{position:absolute;left:0;height:2px;border-radius:2px;background:rgba(244,237,226,.75);width:0}
+.seek .thumb{position:absolute;left:0;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;background:var(--paper);
+  box-shadow:0 0 0 4px rgba(0,0,0,.22),0 1px 4px rgba(0,0,0,.5)}
+.seek:focus-visible .thumb{box-shadow:0 0 0 4px rgba(244,237,226,.22)}
+.times{display:flex;justify-content:space-between;margin-top:2px;font:400 9px/1 var(--mono);letter-spacing:.08em;color:var(--muted)}
+.times .now{color:rgba(244,237,226,.72)}
+
+.controls{display:flex;align-items:center;justify-content:space-between;margin:10px 6px 4px}
+.ctrl{appearance:none;border:0;background:none;width:34px;height:34px;display:grid;place-items:center;color:rgba(244,237,226,.62);cursor:pointer;transition:color .2s,transform .15s}
+.ctrl:active{transform:scale(.92);color:var(--paper)}
+.ctrl svg{width:16px;height:16px;fill:currentColor}
+.ctrl.small{width:38px;height:38px;border:1px solid rgba(244,237,226,.16);border-radius:50%;font:400 8.5px/1 var(--mono);letter-spacing:.02em;color:rgba(244,237,226,.64)}
+.ctrl.small span{display:block;margin-top:1px;font-size:7px;opacity:.55}
+.play{position:relative;appearance:none;border:0;width:62px;height:62px;border-radius:50%;background:var(--paper);color:#171210;
+  display:grid;place-items:center;cursor:pointer;box-shadow:0 16px 30px -10px rgba(0,0,0,.75);transition:transform .16s,background .3s}
+.play:active{transform:scale(.94)}
+.play svg{width:21px;height:21px;fill:currentColor}
+.play .i-pause,.play .i-replay{display:none}
+.is-playing .play .i-play{display:none}
+.is-playing .play .i-pause{display:block}
+.is-ended .play .i-play{display:none}
+.is-ended .play .i-replay{display:block}
+.is-awaiting .play{animation:pulse 2.2s cubic-bezier(.2,.7,.3,1) infinite}
+@keyframes pulse{0%{box-shadow:0 16px 30px -10px rgba(0,0,0,.75),0 0 0 0 rgba(244,237,226,.3)}
+  72%{box-shadow:0 16px 30px -10px rgba(0,0,0,.75),0 0 0 20px rgba(244,237,226,0)}
+  100%{box-shadow:0 16px 30px -10px rgba(0,0,0,.75),0 0 0 0 rgba(244,237,226,0)}}
+
+.hint{min-height:15px;margin:4px 0 0;text-align:center;font-size:10px;letter-spacing:.08em;color:var(--muted);transition:color .3s}
+.is-awaiting .hint{color:rgba(244,237,226,.88)}
+.is-awaiting .hint::before{content:"";display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:2px;box-shadow:0 0 8px var(--accent)}
+
+/* ---------- queue ---------- */
+.queue{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.queue-head{display:flex;justify-content:space-between;margin-bottom:5px;font:500 8px/1.5 var(--mono);letter-spacing:.18em;color:rgba(244,237,226,.38);text-transform:uppercase}
+.queue-list{list-style:none;margin:0;padding:0}
+.qrow{display:grid;grid-template-columns:24px 1fr auto;gap:9px;align-items:center;width:100%;padding:6px 0;border:0;background:none;
+  text-align:left;cursor:pointer;opacity:.56;transition:opacity .25s}
+.qrow.active{opacity:1}
+.qnum{font:400 9.5px/1 var(--mono);color:rgba(244,237,226,.46);letter-spacing:.04em}
+.qrow.active .qnum{color:var(--paper)}
+.qmain{display:grid;gap:5px;min-width:0}
+.qtitle{font-family:var(--serif);font-size:12.4px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(244,237,226,.9)}
+.qbar{position:relative;height:1px;border-radius:2px;background:rgba(244,237,226,.14);overflow:visible}
+.qmark{position:absolute;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:50%;
+  background:var(--paper);box-shadow:0 0 0 2px rgba(0,0,0,.28)}
+.qtime{font:400 8.5px/1 var(--mono);color:rgba(244,237,226,.4);letter-spacing:.02em}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 12px);z-index:20;transform:translate(-50%,-10px);
+  padding:8px 14px;border-radius:99px;border:1px solid rgba(244,237,226,.14);background:rgba(18,14,12,.82);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  font:500 8.5px/1 var(--mono);letter-spacing:.2em;color:rgba(244,237,226,.8);
+  opacity:0;pointer-events:none;transition:opacity .4s,transform .4s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (max-height:720px){
+  :root{--disc:156px}
+  .disc-stage{height:calc(var(--disc) + 8px);margin:2px 0 0}
+  h1{font-size:25px}
+  .lyric{font-size:14px;min-height:38px;margin:9px 0 10px}
+  .controls{margin-top:6px}
+  .play{width:56px;height:56px}
+  .queue{margin-top:8px;padding-top:9px}
+  .qrow{padding:4px 0}
+}
+@media (prefers-reduced-motion:reduce){
+  .b1,.b2,.b3,.is-awaiting .play{animation:none!important}
+  *{transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span></div>
+<div class="grain" aria-hidden="true"></div>
+<div class="toast" id="toast"></div>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="brand"><span class="dot"></span><b>SIDE A</b><span id="counter">01 / 05</span></div>
+    <div class="top-right">
+      <span class="nfc-mini">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 2.2a8.6 8.6 0 0 1 0 11.6M8.6 4.1a5.6 5.6 0 0 1 0 7.8M12 6a2.9 2.9 0 0 1 0 4"/></svg>
+        NFC
+      </span>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="disc-stage" id="discStage">
+      <div class="halo"></div>
+      <div class="disc" aria-hidden="true">
+        <div class="disc-label" id="discLabel"></div>
+        <span class="spindle"></span>
+      </div>
+      <div class="disc-sheen" aria-hidden="true"></div>
+      <svg class="tonearm" viewBox="0 0 240 240" aria-hidden="true">
+        <circle cx="120" cy="18" r="8.5" fill="#f4ede2"/>
+        <circle cx="120" cy="18" r="3" fill="#1a1410" opacity=".35"/>
+        <path d="M120 26 Q158 42 192 82" stroke="#f4ede2" stroke-width="3" stroke-linecap="round" fill="none"/>
+        <g transform="rotate(50 192 82)">
+          <rect x="177" y="75" width="26" height="12" rx="4" fill="#f4ede2"/>
+          <rect x="200" y="78" width="8" height="6" rx="2" fill="#1a1410"/>
+        </g>
+      </svg>
+    </div>
+
+    <section class="meta">
+      <p class="kicker" id="kicker">TRACK 01 <em>·</em> 01:12 — 01:32</p>
+      <h1 id="title">晚风收音机</h1>
+      <p class="artist" id="artist">林岸</p>
+    </section>
+
+    <blockquote class="lyric" id="lyric"><span>“晚风把那天的话，又吹回来一遍”</span></blockquote>
+
+    <section class="seek-wrap">
+      <div class="seek" id="seek" role="slider" tabindex="0" aria-label="播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="rail"></div><div class="fill" id="fill"></div><div class="thumb" id="thumb"></div>
+      </div>
+      <div class="times"><span class="now" id="tNow">01:12</span><span id="tEnd">01:32</span></div>
+    </section>
+
+    <section class="controls">
+      <button class="ctrl" id="prev" aria-label="上一段">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg>
+      </button>
+      <button class="ctrl small" id="back10" aria-label="后退十秒">−10<span>SEC</span></button>
+      <button class="play" id="play" aria-label="播放">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.2v13.6L19 12z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z"/></svg>
+        <svg class="i-replay" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a7 7 0 1 1-6.6 4.7l-2.1-.8A9.2 9.2 0 1 0 12 3V.8L6.8 4 12 7.2z"/></svg>
+      </button>
+      <button class="ctrl small" id="fwd10" aria-label="前进十秒">+10<span>SEC</span></button>
+      <button class="ctrl" id="next" aria-label="下一段">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg>
+      </button>
+    </section>
+
+    <p class="hint" id="hint">轻触播放 · 从 01:12 开始</p>
+    <p class="motto">不用按顺序听，想起哪一句，就贴哪一句。</p>
+  </main>
+
+  <footer class="queue">
+    <div class="queue-head"><span>这张卡片 / 5 CLIPS</span><span id="totalLabel">TOTAL 1:40</span></div>
+    <ol class="queue-list" id="queueList"></ol>
+  </footer>
+</div>
+
+<audio id="audio" preload="auto" playsinline></audio>
+<script src="./config.js?v=6"></script>
+<script>
+(() => {
+  "use strict";
+  const params = new URLSearchParams(location.search);
+
+  // One-shot repair link: /?s=1&reset=1
+  // Unregisters the old service worker, drops its cache, then reloads cleanly.
+  if (params.has("reset")) {
+    const clean = new URL(location.href);
+    clean.searchParams.delete("reset");
+    const jobs = [];
+    if (navigator.serviceWorker) {
+      jobs.push(navigator.serviceWorker.getRegistrations()
+        .then((rs) => Promise.all(rs.map((r) => r.unregister()))));
+    }
+    if (window.caches) {
+      jobs.push(caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))));
+    }
+    Promise.all(jobs).finally(() => location.replace(clean.toString()));
+    return;
+  }
+
+  const DATA = self.MIXTAPE;
+  const tracks = DATA.tracks;
+  const N = tracks.length;
+  const audio = document.getElementById("audio");
+  const $ = (id) => document.getElementById(id);
+  const SHOT = params.has("shot");
+  const MANUAL = params.has("manual");
+  const NOSW = params.has("nosw");
+  const AUTO_NEXT = params.get("all") === "1";
+
+  const state = { i: 0, playing: false, awaiting: false, ended: false, shotT: 0, drag: false };
+  let wakeLock = null;
+  let toastTimer = 0;
+  const artworkCache = new Map();
+
+  /* ---------- color utils ---------- */
+  const rgb = (hex) => {
+    const h = hex.replace("#", "");
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  };
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const lighten = (c, t) => c.map((v) => Math.round(v + (255 - v) * t));
+  const darken = (c, t) => c.map((v) => Math.round(v * (1 - t)));
+  const toHsl = (c) => {
+    let [r, g, b] = c.map((v) => v / 255);
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > .5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+      else if (max === g) h = ((b - r) / d + 2) / 6;
+      else h = ((r - g) / d + 4) / 6;
+    }
+    return [h, s, l];
+  };
+  const fromHsl = (h, s, l) => {
+    h = (h % 1 + 1) % 1;
+    const f = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    if (s <= 0) return [l, l, l].map((v) => Math.round(v * 255));
+    const q = l < .5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [f(p, q, h + 1 / 3), f(p, q, h), f(p, q, h - 1 / 3)].map((v) => Math.round(v * 255));
+  };
+  const vivid = (c) => {
+    const [h, s, l] = toHsl(c);
+    return fromHsl(h, Math.min(.82, s * 1.32 + .11), Math.max(.52, Math.min(.64, l * 1.04 + .02)));
+  };
+  const hueShift = (c, deg) => {
+    let [r, g, b] = c.map((v) => v / 255);
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > .5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+      else if (max === g) h = ((b - r) / d + 2) / 6;
+      else h = ((r - g) / d + 4) / 6;
+    }
+    h = (h + deg / 360 + 1) % 1;
+    const hue2 = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    let rr, gg, bb;
+    if (s === 0) rr = gg = bb = l;
+    else {
+      const q = l < .5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      rr = hue2(p, q, h + 1 / 3); gg = hue2(p, q, h); bb = hue2(p, q, h - 1 / 3);
+    }
+    return [rr, gg, bb].map((v) => Math.round(v * 255));
+  };
+  const fmt = (sec) => {
+    sec = Math.max(0, Math.round(sec));
+    return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+  };
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const isFull = () => !!tracks[state.i].full;
+  const songLength = () => tracks[state.i].songLengthSeconds || tracks[state.i].seconds;
+
+  /* ---------- build queue ---------- */
+  const queueList = $("queueList");
+  const rows = tracks.map((t, i) => {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.className = "qrow";
+    btn.type = "button";
+    btn.dataset.i = String(i);
+    const p1 = (t.startSeconds / Math.max(1, t.songLengthSeconds)) * 100;
+    btn.innerHTML =
+      `<span class="qnum">${pad2(i + 1)}</span>` +
+      `<span class="qmain"><span class="qtitle">${t.title}</span>` +
+      `<span class="qbar"><b class="qmark" style="left:${p1.toFixed(2)}%"></b></span></span>` +
+      `<span class="qtime">${t.start}</span>`;
+    btn.addEventListener("click", () => {
+      if (i === state.i) { toggle(); return; }
+      load(i, { autoplay: true });
+    });
+    li.appendChild(btn);
+    queueList.appendChild(li);
+    return btn;
+  });
+  $("totalLabel").textContent = `TOTAL ${DATA.totalLabel}`;
+
+  /* ---------- render ---------- */
+  function renderTrack() {
+    const t = tracks[state.i];
+    const c = rgb(t.color);
+    const acc = vivid(c);
+    const root = document.documentElement.style;
+    root.setProperty("--accent", `rgb(${acc.join(",")})`);
+    root.setProperty("--label", `rgb(${c.join(",")})`);
+    root.setProperty("--glow", rgba(acc, .55));
+    root.setProperty("--glow2", rgba(hueShift(darken(acc, .08), 28), .38));
+    root.setProperty("--glow3", rgba(hueShift(darken(acc, .34), -22), .42));
+
+    $("counter").textContent = `${pad2(state.i + 1)} / ${pad2(N)}`;
+    $("discLabel").style.backgroundImage = t.cover ? `url("${t.cover}")` : "none";
+    $("kicker").innerHTML = `TRACK ${pad2(state.i + 1)} <em>·</em> ${t.start} — ${t.end}`;
+    $("title").textContent = t.title;
+    $("artist").textContent = t.artist;
+    $("lyric").innerHTML = `<span>“${t.lyric}”</span>`;
+    document.title = `${t.title} · ${DATA.title}`;
+
+    rows.forEach((r, i) => r.classList.toggle("active", i === state.i));
+    setProgress(isFull() ? t.startSeconds / duration() : 0);
+    updateMediaSession(t);
+  }
+
+  function duration() {
+    if (!SHOT && isFinite(audio.duration) && audio.duration > 0) return audio.duration;
+    return isFull() ? songLength() : tracks[state.i].seconds;
+  }
+  function position() {
+    return SHOT ? state.shotT : (audio.currentTime || 0);
+  }
+  function setProgress(p) {
+    p = Math.max(0, Math.min(1, p || 0));
+    $("fill").style.width = `${p * 100}%`;
+    $("thumb").style.left = `${p * 100}%`;
+    const t = tracks[state.i];
+    const d = duration();
+    const abs = isFull() ? p * d : t.startSeconds + p * d;
+    $("tNow").textContent = fmt(abs);
+    $("tEnd").textContent = fmt(isFull() ? d : t.startSeconds + d);
+    $("seek").setAttribute("aria-valuenow", String(Math.round(p * 100)));
+    if ("mediaSession" in navigator && "setPositionState" in navigator.mediaSession && !SHOT) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(0.001, d),
+          position: Math.min(p * d, d),
+          playbackRate: 1,
+        });
+      } catch (e) {}
+    }
+  }
+  function tick() {
+    setProgress(position() / duration());
+  }
+
+  function setPlaying(v) {
+    state.playing = v;
+    document.body.classList.toggle("is-playing", v);
+    if (v) {
+      state.awaiting = false;
+      document.body.classList.remove("is-awaiting");
+      $("hint").textContent = "";
+      if (state.ended) { state.ended = false; document.body.classList.remove("is-ended"); }
+      if (!SHOT) requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+    if ("mediaSession" in navigator) {
+      try { navigator.mediaSession.playbackState = v ? "playing" : "paused"; } catch (e) {}
+    }
+  }
+
+  function setAwaiting(v, text) {
+    state.awaiting = v;
+    document.body.classList.toggle("is-awaiting", v);
+    const t = tracks[state.i];
+    const fallback = t.full ? `轻触，从 ${t.start} 开始，整首播完` : `轻触，从 ${t.start} 开始`;
+    $("hint").textContent = text || (v ? fallback : "");
+  }
+
+  /* ---------- playback ---------- */
+  async function play() {
+    if (SHOT) { setPlaying(true); setAwaiting(false); return; }
+    const t = tracks[state.i];
+    if (state.ended) {
+      audio.currentTime = t.full ? t.startSeconds : 0;
+      state.ended = false;
+      document.body.classList.remove("is-ended");
+    }
+    if (t.full && audio.currentTime < 0.2) {
+      try { audio.currentTime = t.startSeconds; } catch (e) {}
+    }
+    try {
+      await audio.play();
+      setPlaying(true);
+      setAwaiting(false);
+    } catch (err) {
+      if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) {
+        setPlaying(false);
+        setAwaiting(true);
+      } else {
+        setAwaiting(false);
+        $("hint").textContent = "音频没加载出来 · 检查 audio/ 文件夹";
+        toast("AUDIO NOT FOUND");
+      }
+    }
+  }
+  function pause() {
+    audio.pause();
+    setPlaying(false);
+    setAwaiting(false);
+    $("hint").textContent = "已暂停 · 轻触继续";
+  }
+  function toggle() {
+    if (state.playing) pause();
+    else play();
+  }
+
+  function load(i, opts = {}) {
+    i = (i + N) % N;
+    state.i = i;
+    state.ended = false;
+    const t = tracks[i];
+    const rel = opts.seek || 0;
+    const target = t.full ? t.startSeconds + rel : rel;
+    state.shotT = target;
+    document.body.classList.remove("is-ended");
+    audio.pause();
+    audio.src = t.audio;
+    audio.load();
+    try { if (t.full) audio.currentTime = target; } catch (e) {}
+    setPlaying(false);
+    setAwaiting(false);
+    renderTrack();
+    if (t.full || rel) {
+      if (SHOT) {
+        state.shotT = target;
+        setProgress(target / duration());
+      } else {
+        const apply = () => {
+          try { audio.currentTime = Math.min(target, audio.duration || target); } catch (e) {}
+          setProgress(position() / duration());
+        };
+        if (audio.readyState >= 1) apply();
+        else audio.addEventListener("loadedmetadata", apply, { once: true });
+      }
+    }
+    if (opts.autoplay) play();
+    else setAwaiting(true);
+  }
+
+  /* ---------- seek ---------- */
+  const seek = $("seek");
+  function seekToClientX(clientX) {
+    const r = seek.getBoundingClientRect();
+    const p = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    if (SHOT) { state.shotT = p * duration(); setProgress(p); return; }
+    if (isFinite(audio.duration)) audio.currentTime = p * audio.duration;
+    setProgress(p);
+  }
+  seek.addEventListener("pointerdown", (e) => {
+    state.drag = true;
+    try { seek.setPointerCapture(e.pointerId); } catch (err) {}
+    seekToClientX(e.clientX);
+  });
+  seek.addEventListener("pointermove", (e) => { if (state.drag) seekToClientX(e.clientX); });
+  const endDrag = (e) => {
+    if (!state.drag) return;
+    state.drag = false;
+    try { seek.releasePointerCapture(e.pointerId); } catch (err) {}
+  };
+  seek.addEventListener("pointerup", endDrag);
+  seek.addEventListener("pointercancel", endDrag);
+  seek.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      nudge(e.key === "ArrowLeft" ? -2 : 2);
+    }
+  });
+
+  function nudge(s) {
+    if (SHOT) return;
+    try {
+      audio.currentTime = Math.max(0, Math.min(duration() - 0.05, audio.currentTime + s));
+    } catch (e) { return; }
+    setProgress(position() / duration());
+  }
+
+  /* ---------- controls ---------- */
+  $("play").addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
+  $("prev").addEventListener("click", () => load(state.i - 1, { autoplay: true }));
+  $("next").addEventListener("click", () => load(state.i + 1, { autoplay: true }));
+  $("back10").addEventListener("click", () => nudge(-10));
+  $("fwd10").addEventListener("click", () => nudge(10));
+  $("discStage").addEventListener("click", () => { if (state.awaiting) play(); else toggle(); });
+  $("stage").addEventListener("click", (e) => {
+    if (state.awaiting && !e.target.closest("button") && !e.target.closest(".seek")) play();
+  });
+
+  /* ---------- audio events ---------- */
+  audio.addEventListener("timeupdate", tick);
+  audio.addEventListener("loadedmetadata", tick);
+  audio.addEventListener("ended", () => {
+    setPlaying(false);
+    state.ended = true;
+    document.body.classList.add("is-ended");
+    const t = tracks[state.i];
+    $("hint").textContent = t.full ? `整首听完了 · 从 ${t.start} 再来一次` : "这一段听完了 · 再听一次";
+    if (AUTO_NEXT) setTimeout(() => load(state.i + 1, { autoplay: true }), 700);
+  });
+  audio.addEventListener("error", () => {
+    if (SHOT) return;
+    $("hint").textContent = "音频没加载出来 · 检查 audio/ 文件夹";
+  });
+
+  /* ---------- wake lock ---------- */
+  async function requestWakeLock() {
+    if (SHOT || !("wakeLock" in navigator)) return;
+    try {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    } catch (e) { wakeLock = null; }
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && state.playing) requestWakeLock();
+  });
+
+  /* ---------- media session ---------- */
+  function artwork(t) {
+    if (artworkCache.has(t.index)) return artworkCache.get(t.index);
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 512;
+    const g = cv.getContext("2d");
+    const c = rgb(t.color);
+    g.fillStyle = "#120e0c";
+    g.fillRect(0, 0, 512, 512);
+    const grd = g.createRadialGradient(180, 150, 20, 256, 256, 420);
+    grd.addColorStop(0, rgba(lighten(c, .1), 1));
+    grd.addColorStop(.62, rgba(c, .55));
+    grd.addColorStop(1, "#120e0c");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 512, 512);
+    g.fillStyle = "rgba(18,13,10,.9)";
+    g.font = "600 196px Georgia, 'Times New Roman', serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(pad2(t.index), 256, 268);
+    g.fillStyle = "rgba(255,255,255,.66)";
+    g.font = "500 17px ui-monospace, monospace";
+    g.fillText("N F C   M I X T A P E", 256, 414);
+    const url = cv.toDataURL("image/png");
+    artworkCache.set(t.index, url);
+    return url;
+  }
+  function updateMediaSession(t) {
+    if (!("mediaSession" in navigator) || !window.MediaMetadata) return;
+    try {
+      const cover = t.cover ? new URL(t.cover, location.href).href : artwork(t);
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: t.title,
+        artist: t.artist,
+        album: DATA.title,
+        artwork: [{ src: cover, sizes: t.cover ? "600x600" : "512x512",
+                    type: t.cover ? "image/jpeg" : "image/png" }],
+      });
+    } catch (e) {}
+  }
+  if ("mediaSession" in navigator) {
+    const handlers = {
+      play: () => play(),
+      pause: () => pause(),
+      previoustrack: () => load(state.i - 1, { autoplay: true }),
+      nexttrack: () => load(state.i + 1, { autoplay: true }),
+      seekbackward: () => nudge(-10),
+      seekforward: () => nudge(10),
+    };
+    Object.entries(handlers).forEach(([k, fn]) => {
+      try { navigator.mediaSession.setActionHandler(k, fn); } catch (e) {}
+    });
+  }
+
+  /* ---------- toast ---------- */
+  function toast(msg, ms = 2200) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), ms);
+  }
+
+  /* ---------- boot ---------- */
+  const startParam = parseInt(params.get("s") || "1", 10);
+  const startIndex = Math.max(0, Math.min(N - 1, (isNaN(startParam) ? 1 : startParam) - 1));
+  const seekParam = Math.max(0, parseFloat(params.get("t") || "0") || 0);
+
+  if (SHOT) {
+    document.body.classList.add("shot");
+    load(startIndex, { seek: seekParam });
+    setPlaying(true);
+    document.body.classList.add("is-playing");
+    $("hint").textContent = "";
+  } else {
+    load(startIndex, { autoplay: false, seek: seekParam || undefined });
+    setAwaiting(true);
+    if (params.has("s")) setTimeout(() => toast(`NFC · TRACK ${pad2(startIndex + 1)}`), 320);
+    // Try anyway: some Android/Chrome sessions allow it. iOS will refuse, then the
+    // one-tap gate is already visible.
+    setTimeout(() => { if (!MANUAL && !state.playing && state.awaiting) play(); }, 450);
+  }
+
+  if (!NOSW && "serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+  }
+})();
+</script>
+</body>
+</html>
